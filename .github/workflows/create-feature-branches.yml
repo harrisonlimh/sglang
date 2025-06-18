@@ -1,0 +1,118 @@
+name: Create Feature Branches from Tags
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers on version tags like v1.0.0, v2.1.3, etc.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create branch from'
+        required: true
+        type: string
+
+jobs:
+  create-feature-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Get tag name
+        id: get_tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "branch_name=features-based-on-$TAG" >> $GITHUB_OUTPUT
+      
+      - name: Check if branch already exists
+        id: check_branch
+        run: |
+          BRANCH_NAME="${{ steps.get_tag.outputs.branch_name }}"
+          if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Branch $BRANCH_NAME already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Branch $BRANCH_NAME does not exist"
+          fi
+      
+      - name: Create feature branch
+        if: steps.check_branch.outputs.exists == 'false'
+        run: |
+          TAG="${{ steps.get_tag.outputs.tag }}"
+          BRANCH_NAME="${{ steps.get_tag.outputs.branch_name }}"
+          
+          # Create branch from the tag
+          git checkout -b "$BRANCH_NAME" "$TAG"
+          git push origin "$BRANCH_NAME"
+          
+          echo "Created branch: $BRANCH_NAME from tag: $TAG"
+      
+      - name: Set branch protection rules
+        if: steps.check_branch.outputs.exists == 'false'
+        run: |
+          BRANCH_NAME="${{ steps.get_tag.outputs.branch_name }}"
+          
+          # Use GitHub CLI to set branch protection rules
+          gh api repos/${{ github.repository }}/branches/"$BRANCH_NAME"/protection \
+            --method PUT \
+            --field required_status_checks='{"strict":true,"contexts":[]}' \
+            --field enforce_admins=false \
+            --field required_pull_request_reviews='{"required_approving_review_count":1,"dismiss_stale_reviews":true,"require_code_owner_reviews":false}' \
+            --field restrictions=null \
+            --field allow_force_pushes=false \
+            --field allow_deletions=false || {
+              echo "Warning: Could not set branch protection rules. You may need to configure them manually."
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create issue for new branch
+        if: steps.check_branch.outputs.exists == 'false'
+        run: |
+          TAG="${{ steps.get_tag.outputs.tag }}"
+          BRANCH_NAME="${{ steps.get_tag.outputs.branch_name }}"
+          
+          gh issue create \
+            --title "New feature branch created: $BRANCH_NAME" \
+            --body "A new feature branch \`$BRANCH_NAME\` has been automatically created based on tag \`$TAG\`.
+
+## Branch Details
+- **Tag**: \`$TAG\`
+- **Branch**: \`$BRANCH_NAME\`
+- **Purpose**: Feature development based on $TAG
+
+## Important Notes
+- All changes should be made via Pull Requests to this branch
+- Direct pushes to this branch are discouraged
+- Please follow the established naming conventions for PRs
+
+## Next Steps
+1. Create feature branches from this branch for specific features
+2. Submit PRs targeting this branch
+3. Ensure proper code review before merging" \
+            --label "automation,new-branch"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Skip if branch exists
+        if: steps.check_branch.outputs.exists == 'true'
+        run: |
+          echo "Branch ${{ steps.get_tag.outputs.branch_name }} already exists. Skipping creation." 
