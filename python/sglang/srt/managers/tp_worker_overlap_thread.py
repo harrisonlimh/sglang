@@ -26,6 +26,7 @@ import torch
 from sglang.srt.managers.io_struct import (
     GetWeightsByNameReqInput,
     InitWeightsUpdateGroupReqInput,
+    LoadLoRAAdapterReqInput,
     UpdateWeightFromDiskReqInput,
     UpdateWeightsFromDistributedReqInput,
     UpdateWeightsFromTensorReqInput,
@@ -267,6 +268,9 @@ class TpModelWorkerClient:
 
     def get_weights_by_name(self, recv_req: GetWeightsByNameReqInput):
         return self.worker.get_weights_by_name(recv_req)
+
+    def load_lora_adapter(self, recv_req: LoadLoRAAdapterReqInput):
+        return self.worker.load_lora_adapter(recv_req)
 
     def __delete__(self):
         self.input_queue.put((None, None))

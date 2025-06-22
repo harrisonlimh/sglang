@@ -83,6 +83,8 @@ from sglang.srt.managers.io_struct import (
     HealthCheckOutput,
     InitWeightsUpdateGroupReqInput,
     InitWeightsUpdateGroupReqOutput,
+    LoadLoRAAdapterReqInput,
+    LoadLoRAAdapterReqOutput,
     OpenSessionReqInput,
     OpenSessionReqOutput,
     ProfileReq,
@@ -959,6 +961,34 @@ class TokenizerManager:
         async with self.model_update_lock.writer_lock:
             result = (await self.update_weights_from_tensor_communicator(obj))[0]
             return result.success, result.message
+
+    async def load_lora_adapter(
+        self,
+        obj: LoadLoRAAdapterReqInput,
+        request: Optional[fastapi.Request] = None,
+    ) -> Tuple[bool, str]:
+        self.auto_create_handle_loop()
+        assert (
+            self.server_args.dp_size == 1
+        ), "dp_size must be 1 for dynamic lora loading"
+        logger.info(
+            "Start load Lora adapter. Lora name=%s, path=%s",
+            obj.lora_name,
+            obj.lora_path,
+        )
+
+        async with self.model_update_lock.writer_lock:
+            return await self._wait_for_lora_loading(obj)
+
+    async def _wait_for_lora_loading(
+        self, obj: LoadLoRAAdapterReqInput
+    ) -> Tuple[bool, str]:
+        self.send_to_scheduler.send_pyobj(obj)
+        self.lora_update_result = asyncio.Future()
+        result = await self.lora_update_result
+        if result.success:
+            self.server_args.lora_paths[obj.lora_name] = obj.lora_path
+        return result.success, result.message
 
     async def get_weights_by_name(
         self, obj: GetWeightsByNameReqInput, request: Optional[fastapi.Request] = None
