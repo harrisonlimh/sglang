@@ -82,6 +82,8 @@ from sglang.srt.managers.io_struct import (
     HealthCheckOutput,
     InitWeightsUpdateGroupReqInput,
     InitWeightsUpdateGroupReqOutput,
+    LoadLoRAAdapterReqInput,
+    LoadLoRAAdapterReqOutput,
     OpenSessionReqInput,
     OpenSessionReqOutput,
     ProfileReq,
@@ -2203,7 +2205,19 @@ class Scheduler(
             assert flash_cache_success, "Cache flush failed after updating weights"
         else:
             logger.error(message)
-        return UpdateWeightFromDiskReqOutput(success, message, 0)
+        return LoadLoRAAdapterReqOutput(success, message)
+
+    def load_lora_adapter(self, recv_req: LoadLoRAAdapterReqInput):
+        """In-place loading a new lora adapater from disk or huggingface."""
+
+        success, message = self.tp_worker.load_lora_adapter(recv_req)
+
+        if success:
+            flash_cache_success = self.flush_cache()
+            assert flash_cache_success, "Cache flush failed after updating weights"
+        else:
+            logger.error(message)
+        return success, message
 
     def init_weights_update_group(self, recv_req: InitWeightsUpdateGroupReqInput):
         """Initialize the online model parameter update group."""

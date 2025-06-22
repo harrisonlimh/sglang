@@ -814,6 +814,23 @@ class ModelRunner:
         self.lora_manager.load_lora_adapters(self.server_args.lora_paths)
         logger.info("LoRA manager ready.")
 
+    def load_lora_adapter(self, lora_name: str, lora_path: str) -> tuple[bool, str]:
+        """Load a new lora adapter from disk or huggingface."""
+
+        logger.info(
+            f"Begin loading a new lora adapter: name={lora_name}, path={lora_path}. "
+            f"avail mem={get_available_gpu_memory(self.device, self.gpu_id):.2f} GB"
+        )
+
+        result = self.lora_manager.load_lora_adapters({lora_name: lora_path})
+
+        logger.info(
+            f"End loading a new lora adapter: name={lora_name}, path={lora_path}. "
+            f"avail mem={get_available_gpu_memory(self.device, self.gpu_id):.2f} GB"
+        )
+
+        return result[lora_name]
+
     def profile_max_num_token(self, total_gpu_memory: int):
         available_gpu_memory = get_available_gpu_memory(
             self.device,
