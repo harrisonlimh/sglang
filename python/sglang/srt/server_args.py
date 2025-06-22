@@ -128,6 +128,7 @@ class ServerArgs:
     preferred_sampling_params: Optional[str] = None
 
     # LoRA
+    enable_lora: bool = False
     lora_paths: Optional[List[str]] = None
     max_loras_per_batch: int = 8
     lora_backend: str = "triton"
@@ -1041,6 +1042,12 @@ class ServerArgs:
 
         # LoRA
         parser.add_argument(
+            "--enable-lora",
+            default=ServerArgs.enable_lora,
+            action="store_true",
+            help="Enable LoRA support for the model. This argument is automatically set to True if --lora-paths is provided.",
+        )
+        parser.add_argument(
             "--lora-paths",
             type=str,
             nargs="*",
@@ -1634,6 +1641,9 @@ class ServerArgs:
                     self.lora_paths[name] = path
                 else:
                     self.lora_paths[lora_path] = lora_path
+
+            # Enable LoRA if any LoRA paths are provided for backward compatibility.
+            self.enable_lora = True
 
 
 def prepare_server_args(argv: List[str]) -> ServerArgs:
