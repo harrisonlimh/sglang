@@ -27,6 +27,7 @@ from sglang.srt.managers.io_struct import (
     GetWeightsByNameReqInput,
     InitWeightsUpdateGroupReqInput,
     LoadLoRAAdapterReqInput,
+    UnloadLoRAAdapterReqInput,
     UpdateWeightFromDiskReqInput,
     UpdateWeightsFromDistributedReqInput,
     UpdateWeightsFromTensorReqInput,
@@ -271,6 +272,9 @@ class TpModelWorkerClient:
 
     def load_lora_adapter(self, recv_req: LoadLoRAAdapterReqInput):
         return self.worker.load_lora_adapter(recv_req)
+
+    def unload_lora_adapter(self, recv_req: UnloadLoRAAdapterReqInput):
+        return self.worker.unload_lora_adapter(recv_req)
 
     def __delete__(self):
         self.input_queue.put((None, None))

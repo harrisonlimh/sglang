@@ -101,6 +101,7 @@ from sglang.srt.managers.io_struct import (
     SlowDownReqOutput,
     TokenizedEmbeddingReqInput,
     TokenizedGenerateReqInput,
+    UnloadLoRAAdapterReqInput,
     UpdateWeightFromDiskReqInput,
     UpdateWeightFromDiskReqOutput,
     UpdateWeightsFromDistributedReqInput,
@@ -313,6 +314,12 @@ class TokenizerManager:
         self.expert_distribution_communicator = _Communicator(
             self.send_to_scheduler, server_args.dp_size
         )
+        self.load_lora_adapter_communicator = _Communicator(
+            self.send_to_scheduler, server_args.dp_size
+        )
+        self.unload_lora_adapter_communicator = _Communicator(
+            self.send_to_scheduler, server_args.dp_size
+        )
 
         self._result_dispatcher = TypeBasedDispatcher(
             [
@@ -378,6 +385,10 @@ class TokenizerManager:
                 (
                     ExpertDistributionReqOutput,
                     self.expert_distribution_communicator.handle_recv,
+                ),
+                (
+                    LoadLoRAAdapterReqOutput,
+                    self.load_lora_adapter_communicator.handle_recv,
                 ),
                 (HealthCheckOutput, lambda x: None),
             ]
@@ -965,7 +976,7 @@ class TokenizerManager:
     async def load_lora_adapter(
         self,
         obj: LoadLoRAAdapterReqInput,
-        request: Optional[fastapi.Request] = None,
+        _: Optional[fastapi.Request] = None,
     ) -> Tuple[bool, str]:
         self.auto_create_handle_loop()
         assert (
@@ -978,17 +989,26 @@ class TokenizerManager:
         )
 
         async with self.model_update_lock.writer_lock:
-            return await self._wait_for_lora_loading(obj)
+            result = (await self.load_lora_adapter_communicator(obj))[0]
+            return result.success, result.message
 
-    async def _wait_for_lora_loading(
-        self, obj: LoadLoRAAdapterReqInput
+    async def unload_lora_adapter(
+        self,
+        obj: UnloadLoRAAdapterReqInput,
+        _: Optional[fastapi.Request] = None,
     ) -> Tuple[bool, str]:
-        self.send_to_scheduler.send_pyobj(obj)
-        self.lora_update_result = asyncio.Future()
-        result = await self.lora_update_result
-        if result.success:
-            self.server_args.lora_paths[obj.lora_name] = obj.lora_path
-        return result.success, result.message
+        self.auto_create_handle_loop()
+        assert (
+            self.server_args.dp_size == 1
+        ), "dp_size must be 1 for dynamic lora loading"
+        logger.info(
+            "Start unload Lora adapter. Lora name=%s",
+            obj.lora_name,
+        )
+
+        async with self.model_update_lock.writer_lock:
+            result = (await self.unload_lora_adapter_communicator(obj))[0]
+            return result.success, result.message
 
     async def get_weights_by_name(
         self, obj: GetWeightsByNameReqInput, request: Optional[fastapi.Request] = None

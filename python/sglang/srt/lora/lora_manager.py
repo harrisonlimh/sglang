@@ -16,7 +16,7 @@
 # and "Punica: Multi-Tenant LoRA Serving"
 
 import logging
-from typing import Dict, Set, Tuple
+from typing import Dict, Iterable, Set, Tuple
 
 import torch
 
@@ -136,13 +136,13 @@ class LoRAManager:
         self.update_state_from_configs()
         return results
 
-    def unload_lora_adapters(self, lora_names: Set[str]):
+    def unload_lora_adapters(self, lora_names: Iterable[str]):
         """
         Unload LoRA adapters by their names. This will remove the adapters from the memory pool and
         delete the corresponding LoRA modules.
 
         Args:
-            lora_names (Set[str]): A set of LoRA adapter names to unload.
+            lora_names (Iterable[str]): A list of LoRA adapter names to unload.
         """
         for lora_name in lora_names:
             if lora_name in self.loras:
