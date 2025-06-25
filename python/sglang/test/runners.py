@@ -134,10 +134,12 @@ class HFRunner:
         model_type: str = "generation",
         output_str_only: bool = False,
         trust_remote_code: bool = False,
+        batch_generation: bool = False,
     ):
         self.model_type = model_type
         self.output_str_only = output_str_only
         self.trust_remote_code = trust_remote_code
+        self.batch_generation = batch_generation
 
         self.in_queue = mp.Queue()
         self.out_queue = mp.Queue()
@@ -166,7 +168,6 @@ class HFRunner:
     def _get_gme_qwen2_vl_embeddings(
         self, prompts, image_data: Optional[List[str]] = None
     ):
-
         images = None
         if image_data is not None:
             images = [load_image(image)[0] for image in image_data]
@@ -282,18 +283,31 @@ class HFRunner:
 
             if prompts is not None:
                 if self.model_type == "generation":
-                    out_queue.put(
-                        self.forward_generation_raw(
-                            base_model=self.base_model,
-                            prompts=prompts,
-                            max_new_tokens=max_new_tokens,
-                            tokenizer=self.tokenizer,
-                            lora_paths=lora_paths,
-                            torch_dtype=torch_dtype,
-                            output_str_only=self.output_str_only,
-                            token_ids_logprob=token_ids_logprob,
+                    if not self.batch_generation:
+                        out_queue.put(
+                            self.forward_generation_raw(
+                                base_model=self.base_model,
+                                prompts=prompts,
+                                max_new_tokens=max_new_tokens,
+                                tokenizer=self.tokenizer,
+                                lora_paths=lora_paths,
+                                torch_dtype=torch_dtype,
+                                output_str_only=self.output_str_only,
+                                token_ids_logprob=token_ids_logprob,
+                            )
                         )
-                    )
+                    else:
+                        out_queue.put(
+                            self.forward_generation_batched(
+                                base_model=self.base_model,
+                                prompts=prompts,
+                                max_new_tokens=max_new_tokens,
+                                tokenizer=self.tokenizer,
+                                lora_paths=lora_paths,
+                                torch_dtype=torch_dtype,
+                                output_str_only=self.output_str_only,
+                            )
+                        )
                 elif self.model_type == "embedding":
                     assert not self.output_str_only
                     if "gme-qwen2-vl" in model_path.lower():
@@ -369,6 +383,74 @@ class HFRunner:
     def __exit__(self, exc_type, exc_value, traceback):
         self.model_proc.terminate()
         self.in_queue = self.out_queue = None
+
+    @staticmethod
+    def forward_generation_batched(
+        base_model,
+        prompts: List[str],
+        max_new_tokens: int,
+        tokenizer,
+        torch_dtype: torch.dtype,
+        lora_paths: Optional[List[str]] = None,
+        output_str_only: bool = True,
+    ) -> ModelOutput:
+        if not output_str_only:
+            raise NotImplementedError(
+                "Batch generation with logprobs is not supported."
+            )
+
+        output_strs = []
+
+        adapters_to_load = [path for path in lora_paths if path is not None] if lora_paths else []
+        if adapters_to_load:
+            from peft import PeftModel
+            model = PeftModel.from_pretrained(
+                base_model,
+                adapters_to_load[0],
+                adapters_to_load[0],
+                torch_dtype=torch_dtype,
+                is_trainable=False,
+            )
+            for adapter in adapters_to_load[1:]:
+                model.load_adapter(
+                    model_id=adapter,
+                    adapter_name=adapter,
+                )
+            adapter_names = ["__base__" if path is None else path for path in lora_paths]
+        else:
+            model = base_model
+            adapter_names = None
+
+        tokenizer.pad_token = tokenizer.eos_token
+        input_ids = tokenizer(prompts, padding=True, return_tensors="pt")
+        for k, v in input_ids.items():
+            input_ids[k] = v.cuda()
+
+        outputs = model.generate(
+            **input_ids,
+            adapter_names=adapter_names,
+            generation_config=GenerationConfig(
+                do_sample=False,
+                temperature=None,
+                top_p=None,
+                max_new_tokens=max_new_tokens,
+                return_dict_in_generate=True,
+                output_scores=(not output_str_only),
+                # make sure to disable compile
+                disable_compile=True,
+            ),
+        )
+
+        output_strs = [tokenizer.decode(output_seq[len(input_seq) :], skip_special_tokens=True)
+                          for output_seq, input_seq in zip(outputs[0], input_ids["input_ids"])]
+
+        if adapters_to_load:
+            # Unload the LoRA adapter if it is used
+            model.unload()
+
+        return ModelOutput(
+            output_strs=output_strs,
+        )
 
     @staticmethod
     def forward_generation_raw(
@@ -502,6 +584,8 @@ class SRTRunner:
         speculative_num_draft_tokens: Optional[int] = None,
         disable_overlap_schedule: bool = False,
         disable_custom_all_reduce: bool = False,
+        disable_chunked_prefix_cache: bool = False,
+        sleep_on_idle=False,
         torchao_config: Optional[str] = None,
     ):
         self.model_type = model_type
@@ -540,6 +624,8 @@ class SRTRunner:
             disable_overlap_schedule=disable_overlap_schedule,
             cuda_graph_max_bs=4,
             disable_custom_all_reduce=disable_custom_all_reduce,
+            disable_chunked_prefix_cache=disable_chunked_prefix_cache,
+            sleep_on_idle=sleep_on_idle,
             **spec_kwargs,
         )
 
@@ -808,9 +894,9 @@ def check_close_model_outputs(
     print(f"{srt_outputs.output_strs=}")
     rouge_l_scores = calculate_rouge_l(hf_outputs.output_strs, srt_outputs.output_strs)
     print(f"{rouge_l_scores=}")
-    assert all(
-        score >= rouge_l_tolerance for score in rouge_l_scores
-    ), f"Not all ROUGE-L scores are greater than rouge_l_tolerance={rouge_l_tolerance}"
+    assert all(score >= rouge_l_tolerance for score in rouge_l_scores), (
+        f"Not all ROUGE-L scores are greater than rouge_l_tolerance={rouge_l_tolerance}"
+    )
 
     if check_logprobs:
         for i in range(len(hf_outputs.output_strs)):
