@@ -357,7 +357,6 @@ class MoEGate(nn.Module):
                         device=hidden_states.device,
                         dtype=torch.float32,
                     )
-                    # Note: PDL is disabled by default.
                     mm_M1_16_K7168_N256(
                         hidden_states,
                         self.weight.t(),
