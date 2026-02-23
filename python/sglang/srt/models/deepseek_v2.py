@@ -180,8 +180,8 @@ if _use_aiter_gfx95:
     )
 
 if _is_cuda:
-    from sgl_kernel import bmm_fp8, dsv3_fused_a_gemm, dsv3_router_gemm
     from flashinfer.gemm.routergemm_dsv3 import mm_M1_16_K7168_N256
+    from sgl_kernel import bmm_fp8, dsv3_fused_a_gemm, dsv3_router_gemm
 elif _is_cpu and _is_cpu_amx_available:
     pass
 elif _is_hip:
@@ -361,14 +361,12 @@ class MoEGate(nn.Module):
                         hidden_states,
                         self.weight.t(),
                         logits,
-                        launch_with_pdl=envs.SGLANG_FLASHINFER_DSV3_ROTUER_GEMM_LAUNCH_WITH_PDL.get()
-                    ) 
+                        launch_with_pdl=envs.SGLANG_FLASHINFER_DSV3_ROTUER_GEMM_LAUNCH_WITH_PDL.get(),
+                    )
                 elif self.weight.shape[0] == 384:
                     logits = dsv3_router_gemm(
-                        hidden_states,
-                        self.weight,
-                        out_dtype=torch.float32
-                    ) 
+                        hidden_states, self.weight, out_dtype=torch.float32
+                    )
             elif _use_aiter_gfx95 and hidden_states.shape[0] <= 256:
                 logits = aiter_dsv3_router_gemm(
                     hidden_states, self.weight, gemm_output_zero_allocator
