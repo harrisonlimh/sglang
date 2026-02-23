@@ -328,6 +328,7 @@ class Envs:
     # Default to the pick from flashinfer
     SGLANG_FLASHINFER_FP4_GEMM_BACKEND = EnvStr("")
     SGLANG_FLASHINFER_WORKSPACE_SIZE = EnvInt(384 * 1024 * 1024)
+    SGLANG_FLASHINFER_DSV3_ROTUER_GEMM_LAUNCH_WITH_PDL = EnvBool(True)
 
     # Triton
     SGLANG_TRITON_DECODE_ATTN_STATIC_KV_SPLITS = EnvBool(False)
