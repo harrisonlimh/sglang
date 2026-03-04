@@ -2012,7 +2012,6 @@ async def send_concurrent_generate_requests_with_custom_params(
 
         req = base_payload.copy()
         req.update(custom_param)
-        print(f"harrisonlim - using: req: {req}, headers: {headers}")
         tasks.append(asyncio.create_task(async_generate_with_priority(req, headers)))
     return await asyncio.gather(*tasks)
 

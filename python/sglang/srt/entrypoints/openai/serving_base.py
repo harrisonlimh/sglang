@@ -283,6 +283,5 @@ def extract_priority(request, raw_request):
     if raw_request is not None:
         priority = raw_request.headers.get("x-sglang-request-priority")
         if priority is not None:
-            print(f"harrisonlim - returning it from header - priority: {priority}")
             return int(priority)
     return None

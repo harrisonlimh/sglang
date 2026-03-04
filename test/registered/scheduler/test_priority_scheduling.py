@@ -395,7 +395,6 @@ def _verify_genereate_responses(
     Verify generate response results are as expected based on status code and response json object content.
     In addition, collects e2e latency info to verify scheduling and processing ordering.
     """
-    print(f"harrisonlim - _verify_genereate_responses() - responses: {responses}")
     for got, expected in zip(responses, expected_code_and_error_message):
         got_status, got_json = got
         expected_status, expected_err_msg = expected
