@@ -361,7 +361,7 @@ class MoEGate(nn.Module):
                         hidden_states,
                         self.weight.t(),
                         logits,
-                        launch_with_pdl=envs.SGLANG_FLASHINFER_DSV3_ROTUER_GEMM_LAUNCH_WITH_PDL.get(),
+                        launch_with_pdl=True,
                     )
                 elif self.weight.shape[0] == 384:
                     logits = dsv3_router_gemm(
