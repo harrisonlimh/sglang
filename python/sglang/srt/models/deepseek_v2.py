@@ -318,9 +318,10 @@ class MoEGate(nn.Module):
                 _is_cuda
                 and hidden_states.shape[0] <= 16
                 and hidden_states.shape[1] == 7168
+                and (self.weight.shape[0] == 256 or self.weight.shape[0] == 384)
                 and _device_sm >= 90
             ):
-                if self.weight.shape[0] == 256:
+                if _device_sm >= 100 and self.weight.shape[0] == 256:
                     # router gemm output float32
                     logits = torch.empty(
                         hidden_states.shape[0],
@@ -334,7 +335,7 @@ class MoEGate(nn.Module):
                         logits,
                         launch_with_pdl=True,
                     )
-                elif self.weight.shape[0] == 384:
+                else:
                     logits = dsv3_router_gemm(
                         hidden_states, self.weight, out_dtype=torch.float32
                     )
